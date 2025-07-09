@@ -473,7 +473,7 @@ end)
 
 --------------------------------------------------------------------------------
 -- Create the window and all controls
-local Controls, Frame = Library:CreateWindow({Title = "diddler fucker cheat"})
+local Controls, Frame = Library:CreateWindow({Title = "Roblox Multi-Cheat"})
 
 Controls:AddToggle("ESP", false, function(val)
     ESP_ENABLED = val
