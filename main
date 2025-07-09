@@ -1,0 +1,536 @@
+-- Local UI Library with sliders, keybinds, draggable window, and menu toggle
+local Library = {}
+
+function Library:CreateWindow(info)
+    local UserInputService = game:GetService("UserInputService")
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = info.Title or "Window"
+    ScreenGui.Parent = game:GetService("CoreGui")
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0, 340, 0, 540)
+    Frame.Position = UDim2.new(0.5, -170, 0.5, -270)
+    Frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    Frame.Active = true
+    Frame.Draggable = false
+    Frame.Parent = ScreenGui
+
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Text = info.Title or "Window"
+    TitleLabel.Size = UDim2.new(1, 0, 0, 36)
+    TitleLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TitleLabel.Font = Enum.Font.SourceSansBold
+    TitleLabel.TextSize = 22
+    TitleLabel.Parent = Frame
+
+    -- Draggable logic
+    local dragging, dragStart, startPos
+    TitleLabel.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = Frame.Position
+        end
+    end)
+    TitleLabel.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    -- Menu toggle key (RightShift)
+    local visible = true
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if not gpe and input.KeyCode == Enum.KeyCode.RightShift then
+            visible = not visible
+            Frame.Visible = visible
+        end
+    end)
+
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, 0, 1, -36)
+    container.Position = UDim2.new(0, 0, 0, 36)
+    container.BackgroundTransparency = 1
+    container.Parent = Frame
+
+    local y = 0
+    local spacing = 44
+
+    local Controls = {}
+    Controls._count = 0
+
+    -- Toggle
+    function Controls:AddToggle(name, default, callback)
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, -24, 0, 32)
+        button.Position = UDim2.new(0, 12, 0, y + 12)
+        button.Text = name .. ": " .. (default and "ON" or "OFF")
+        button.BackgroundColor3 = default and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
+        button.TextColor3 = Color3.fromRGB(255, 255, 255)
+        button.Font = Enum.Font.SourceSansBold
+        button.TextSize = 18
+        button.Parent = container
+
+        local toggled = default
+        button.MouseButton1Click:Connect(function()
+            toggled = not toggled
+            button.Text = name .. ": " .. (toggled and "ON" or "OFF")
+            button.BackgroundColor3 = toggled and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
+            if callback then callback(toggled) end
+        end)
+        y = y + spacing
+        return button
+    end
+
+    -- Slider
+    function Controls:AddSlider(name, min, max, default, decimals, callback)
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -24, 0, 18)
+        label.Position = UDim2.new(0, 12, 0, y + 12)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Color3.fromRGB(255,255,255)
+        label.Font = Enum.Font.SourceSans
+        label.TextSize = 16
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Parent = container
+
+        local slider = Instance.new("Frame")
+        slider.Size = UDim2.new(1, -24, 0, 16)
+        slider.Position = UDim2.new(0, 12, 0, y + 32)
+        slider.BackgroundColor3 = Color3.fromRGB(60,60,60)
+        slider.BorderSizePixel = 0
+        slider.Parent = container
+
+        local fill = Instance.new("Frame")
+        fill.Size = UDim2.new((default-min)/(max-min), 0, 1, 0)
+        fill.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+        fill.BorderSizePixel = 0
+        fill.Parent = slider
+
+        local dragging = false
+        local value = default
+
+        local function update(val)
+            value = math.clamp(val, min, max)
+            fill.Size = UDim2.new((value-min)/(max-min), 0, 1, 0)
+            label.Text = string.format("%s: %."..decimals.."f", name, value)
+            if callback then callback(value) end
+        end
+
+        slider.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging = true
+                update(min + ((input.Position.X - slider.AbsolutePosition.X)/slider.AbsoluteSize.X)*(max-min))
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                update(min + ((input.Position.X - slider.AbsolutePosition.X)/slider.AbsoluteSize.X)*(max-min))
+            end
+        end)
+        update(default)
+        y = y + spacing + 10
+        return {Set = update}
+    end
+
+    -- Keybind
+    function Controls:AddKeybind(name, default, callback)
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(0, 180, 0, 32)
+        label.Position = UDim2.new(0, 12, 0, y + 12)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Color3.fromRGB(255,255,255)
+        label.Font = Enum.Font.SourceSansBold
+        label.TextSize = 18
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        local function keyToString(key)
+            if typeof(key) == "EnumItem" then
+                return key.Name
+            elseif typeof(key) == "string" then
+                return key
+            else
+                return "Bind"
+            end
+        end
+        label.Text = name .. ": [" .. keyToString(default) .. "]"
+        label.Parent = container
+
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(0, 90, 0, 28)
+        button.Position = UDim2.new(0, 200, 0, y + 16)
+        button.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        button.TextColor3 = Color3.fromRGB(255,255,255)
+        button.Font = Enum.Font.SourceSansBold
+        button.TextSize = 17
+        button.Text = "Change"
+        button.Parent = container
+
+        local binding = false
+        local key = default
+
+        button.MouseButton1Click:Connect(function()
+            binding = true
+            button.Text = "Press key"
+        end)
+        UserInputService.InputBegan:Connect(function(input, gpe)
+            if binding and not gpe and input.UserInputType == Enum.UserInputType.Keyboard then
+                key = input.KeyCode
+                label.Text = name .. ": [" .. keyToString(key) .. "]"
+                button.Text = "Change"
+                binding = false
+                if callback then callback(key) end
+            end
+        end)
+        y = y + spacing
+        return {Get = function() return key end, Set = function(k) key = k end}
+    end
+
+    return Controls, Frame
+end
+
+--------------------------------------------------------------------------------
+-- Feature variables and Roblox services
+local ESP_ENABLED = false
+local AIMBOT_ENABLED = false
+local FLY_ENABLED = false
+local SPEED_ENABLED = false
+local AIMBOT_SMOOTHNESS = 1
+local SPEED_VALUE = 40
+local FLY_SPEED = 60
+
+local AIMBOT_KEY = Enum.KeyCode.Q
+local FLY_KEY = Enum.KeyCode.F
+local SPEED_KEY = Enum.KeyCode.LeftShift
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+local espObjects = {}
+local flyConnection, espConnection, aimbotConnection
+local flying = false
+local flyVelocity, flyGyro
+
+--------------------------------------------------------------------------------
+-- Sticky Aimbot logic
+local stickyTarget = nil
+local function isEnemy(player)
+    if player.Team and LocalPlayer.Team then
+        return player.Team ~= LocalPlayer.Team
+    end
+    return player ~= LocalPlayer
+end
+
+local function getCharacter(player)
+    return player and player.Character or nil
+end
+
+local function getHead(player)
+    local char = getCharacter(player)
+    return char and char:FindFirstChild("Head")
+end
+
+local function getRoot(player)
+    local char = getCharacter(player)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function worldToViewport(pos)
+    local screenPos, onScreen = Camera:WorldToViewportPoint(pos)
+    return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
+end
+
+local function isValidTarget(target)
+    if not target then return false end
+    if not target.Parent then return false end
+    if not target:IsA("BasePart") then return false end
+    if not target.Parent:FindFirstChildOfClass("Humanoid") then return false end
+    return true
+end
+
+local function getStickyTarget()
+    if stickyTarget and isValidTarget(stickyTarget) then
+        return stickyTarget
+    end
+    local Mouse = UserInputService:GetMouseLocation()
+    local closest, minDist = nil, 120
+    for _,player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and isEnemy(player) then
+            local head = getHead(player)
+            if head then
+                local screenPos, onScreen, z = worldToViewport(head.Position)
+                if onScreen and z > 0 then
+                    local dist = (Vector2.new(Mouse.X, Mouse.Y) - screenPos).Magnitude
+                    if dist < minDist then
+                        minDist = dist
+                        closest = head
+                    end
+                end
+            end
+        end
+    end
+    stickyTarget = closest
+    return stickyTarget
+end
+
+local function createESP(player)
+    local box = Drawing.new("Square")
+    box.Thickness = 2
+    box.Filled = false
+    box.Color = isEnemy(player) and Color3.fromRGB(255,0,0) or Color3.fromRGB(0,255,0)
+    box.Visible = false
+
+    local name = Drawing.new("Text")
+    name.Size = 13
+    name.Color = box.Color
+    name.Center = true
+    name.Outline = true
+    name.Visible = false
+
+    espObjects[player] = {Box = box, Name = name}
+end
+
+local function removeESP(player)
+    if espObjects[player] then
+        for _,obj in pairs(espObjects[player]) do
+            obj:Remove()
+        end
+        espObjects[player] = nil
+    end
+end
+
+local function updateESP()
+    for _,player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and getRoot(player) and getHead(player) then
+            if not espObjects[player] then
+                createESP(player)
+            end
+            local root = getRoot(player)
+            local head = getHead(player)
+            local box = espObjects[player].Box
+            local name = espObjects[player].Name
+
+            local min = root.Position - Vector3.new(2,3,1)
+            local max = root.Position + Vector3.new(2,3,1)
+            local corners = {
+                Vector3.new(min.X, min.Y, min.Z),
+                Vector3.new(max.X, min.Y, min.Z),
+                Vector3.new(min.X, max.Y, min.Z),
+                Vector3.new(max.X, max.Y, min.Z),
+                Vector3.new(min.X, min.Y, max.Z),
+                Vector3.new(max.X, min.Y, max.Z),
+                Vector3.new(min.X, max.Y, max.Z),
+                Vector3.new(max.X, max.Y, max.Z),
+            }
+            local screenPoints = {}
+            local onScreen = false
+            for _,corner in ipairs(corners) do
+                local screenPos, visible = worldToViewport(corner)
+                table.insert(screenPoints, screenPos)
+                if visible then onScreen = true end
+            end
+            if onScreen then
+                local xs, ys = {}, {}
+                for _,v in ipairs(screenPoints) do
+                    table.insert(xs, v.X)
+                    table.insert(ys, v.Y)
+                end
+                local minX, maxX = math.min(unpack(xs)), math.max(unpack(xs))
+                local minY, maxY = math.min(unpack(ys)), math.max(unpack(ys))
+                box.Position = Vector2.new(minX, minY)
+                box.Size = Vector2.new(maxX-minX, maxY-minY)
+                box.Visible = ESP_ENABLED
+                name.Position = worldToViewport(head.Position + Vector3.new(0,0.5,0))
+                name.Text = player.DisplayName or player.Name
+                name.Visible = ESP_ENABLED
+            else
+                box.Visible = false
+                name.Visible = false
+            end
+        else
+            removeESP(player)
+        end
+    end
+    for player in pairs(espObjects) do
+        if not Players:FindFirstChild(player.Name) or not getRoot(player) then
+            removeESP(player)
+        end
+    end
+end
+
+local function clearAllESP()
+    for player in pairs(espObjects) do
+        removeESP(player)
+    end
+end
+
+local function startAimbot()
+    if aimbotConnection then aimbotConnection:Disconnect() end
+    aimbotConnection = RunService.RenderStepped:Connect(function()
+        if AIMBOT_ENABLED then
+            local target = getStickyTarget()
+            if isValidTarget(target) then
+                local camCF = Camera.CFrame
+                local dir = (target.Position - Camera.CFrame.Position).Unit
+                local newCF = CFrame.new(camCF.Position, camCF.Position + dir)
+                Camera.CFrame = camCF:Lerp(newCF, AIMBOT_SMOOTHNESS/10)
+            end
+        else
+            stickyTarget = nil
+        end
+    end)
+end
+
+local function stopAimbot()
+    if aimbotConnection then aimbotConnection:Disconnect() aimbotConnection = nil end
+    stickyTarget = nil
+end
+
+local function flyStep()
+    if not flying or not getRoot(LocalPlayer) then return end
+    local move = Vector3.new()
+    if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Camera.CFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - Camera.CFrame.LookVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - Camera.CFrame.RightVector end
+    if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Camera.CFrame.RightVector end
+    local speed = FLY_SPEED
+    if move.Magnitude > 0 then
+        move = move.Unit * speed
+    end
+    flyVelocity.Velocity = move
+    flyGyro.CFrame = Camera.CFrame
+end
+
+local function startFly()
+    if flying or not getRoot(LocalPlayer) then return end
+    flying = true
+    local root = getRoot(LocalPlayer)
+    flyVelocity = Instance.new("BodyVelocity")
+    flyVelocity.MaxForce = Vector3.new(1,1,1) * 1e5
+    flyVelocity.P = 1e4
+    flyVelocity.Parent = root
+    flyGyro = Instance.new("BodyGyro")
+    flyGyro.MaxTorque = Vector3.new(1,1,1) * 1e5
+    flyGyro.P = 1e4
+    flyGyro.Parent = root
+    flyConnection = RunService.RenderStepped:Connect(flyStep)
+end
+
+local function stopFly()
+    flying = false
+    if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+    if flyVelocity then flyVelocity:Destroy() flyVelocity = nil end
+    if flyGyro then flyGyro:Destroy() flyGyro = nil end
+end
+
+local function setSpeed()
+    local char = getCharacter(LocalPlayer)
+    if char then
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = SPEED_ENABLED and SPEED_VALUE or 16
+        end
+    end
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    removeESP(player)
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    wait(1)
+    setSpeed()
+end)
+
+-- Keybind toggles for features
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if not gpe then
+        if input.KeyCode == AIMBOT_KEY then
+            AIMBOT_ENABLED = not AIMBOT_ENABLED
+            if AIMBOT_ENABLED then startAimbot() else stopAimbot() end
+        elseif input.KeyCode == FLY_KEY then
+            FLY_ENABLED = not FLY_ENABLED
+            if FLY_ENABLED then startFly() else stopFly() end
+        elseif input.KeyCode == SPEED_KEY then
+            SPEED_ENABLED = not SPEED_ENABLED
+            setSpeed()
+        end
+    end
+end)
+
+--------------------------------------------------------------------------------
+-- Create the window and all controls
+local Controls, Frame = Library:CreateWindow({Title = "diddler fucker cheat"})
+
+Controls:AddToggle("ESP", false, function(val)
+    ESP_ENABLED = val
+    if ESP_ENABLED then
+        if not espConnection then
+            espConnection = RunService.RenderStepped:Connect(updateESP)
+        end
+    else
+        if espConnection then espConnection:Disconnect() espConnection = nil end
+        clearAllESP()
+    end
+end)
+
+Controls:AddToggle("Aimbot", false, function(val)
+    AIMBOT_ENABLED = val
+    if AIMBOT_ENABLED then
+        startAimbot()
+    else
+        stopAimbot()
+    end
+end)
+
+Controls:AddKeybind("Aimbot Key", AIMBOT_KEY, function(key)
+    AIMBOT_KEY = key
+end)
+
+Controls:AddSlider("Aimbot Smoothness", 0.1, 10, 1, 2, function(val)
+    AIMBOT_SMOOTHNESS = val
+end)
+
+Controls:AddToggle("Fly", false, function(val)
+    FLY_ENABLED = val
+    if FLY_ENABLED then
+        startFly()
+    else
+        stopFly()
+    end
+end)
+
+Controls:AddKeybind("Fly Key", FLY_KEY, function(key)
+    FLY_KEY = key
+end)
+
+Controls:AddSlider("Fly Speed", 10, 200, FLY_SPEED, 0, function(val)
+    FLY_SPEED = val
+end)
+
+Controls:AddToggle("Speed Hack", false, function(val)
+    SPEED_ENABLED = val
+    setSpeed()
+end)
+
+Controls:AddKeybind("Speed Key", SPEED_KEY, function(key)
+    SPEED_KEY = key
+end)
+
+Controls:AddSlider("Speed Value", 16, 200, SPEED_VALUE, 0, function(val)
+    SPEED_VALUE = val
+    setSpeed()
+end)
