@@ -209,6 +209,9 @@ local AIMBOT_SMOOTHNESS = 1
 local SPEED_VALUE = 40
 local FLY_SPEED = 60
 
+local HEALTH_ESP_ENABLED = false
+local NAME_ESP_ENABLED = false
+
 local AIMBOT_KEY = Enum.KeyCode.Q
 local FLY_KEY = Enum.KeyCode.F
 local SPEED_KEY = Enum.KeyCode.LeftShift
@@ -300,13 +303,32 @@ local function createESP(player)
     name.Outline = true
     name.Visible = false
 
-    espObjects[player] = {Box = box, Name = name}
+    local healthText = Drawing.new("Text")
+    healthText.Size = 13
+    healthText.Color = Color3.fromRGB(0,255,0)
+    healthText.Center = true
+    healthText.Outline = true
+    healthText.Visible = false
+
+    local usernameText = Drawing.new("Text")
+    usernameText.Size = 13
+    usernameText.Color = Color3.fromRGB(255,255,255)
+    usernameText.Center = true
+    usernameText.Outline = true
+    usernameText.Visible = false
+
+    espObjects[player] = {
+        Box = box,
+        Name = name,
+        Health = healthText,
+        Username = usernameText
+    }
 end
 
 local function removeESP(player)
     if espObjects[player] then
         for _,obj in pairs(espObjects[player]) do
-            obj:Remove()
+            if obj.Remove then obj:Remove() end
         end
         espObjects[player] = nil
     end
@@ -356,9 +378,39 @@ local function updateESP()
                 name.Position = worldToViewport(head.Position + Vector3.new(0,0.5,0))
                 name.Text = player.DisplayName or player.Name
                 name.Visible = ESP_ENABLED
+
+                -- Health ESP
+                local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+                if espObjects[player].Health then
+                    if HEALTH_ESP_ENABLED and humanoid and getHead(player) then
+                        local pos = getHead(player).Position + Vector3.new(0, 2.5, 0)
+                        local screenPos2, onScreen2 = worldToViewport(pos)
+                        espObjects[player].Health.Position = screenPos2
+                        espObjects[player].Health.Text = tostring(math.floor(humanoid.Health))
+                        espObjects[player].Health.Visible = ESP_ENABLED and onScreen2
+                    else
+                        espObjects[player].Health.Visible = false
+                    end
+                end
+
+                -- Name ESP
+                if espObjects[player].Username then
+                    if NAME_ESP_ENABLED and getHead(player) then
+                        local pos = getHead(player).Position + Vector3.new(0, 3.2, 0)
+                        local screenPos3, onScreen3 = worldToViewport(pos)
+                        espObjects[player].Username.Position = screenPos3
+                        espObjects[player].Username.Text = player.Name
+                        espObjects[player].Username.Visible = ESP_ENABLED and onScreen3
+                    else
+                        espObjects[player].Username.Visible = false
+                    end
+                end
+
             else
                 box.Visible = false
                 name.Visible = false
+                if espObjects[player].Health then espObjects[player].Health.Visible = false end
+                if espObjects[player].Username then espObjects[player].Username.Visible = false end
             end
         else
             removeESP(player)
@@ -533,4 +585,12 @@ end)
 Controls:AddSlider("Speed Value", 16, 200, SPEED_VALUE, 0, function(val)
     SPEED_VALUE = val
     setSpeed()
+end)
+
+-- ESP Options window
+local ESPControls, ESPFrame = Library:CreateWindow({Title = "ESP Options"})
+ESPFrame.Position = UDim2.new(0.5, 180, 0.5, -270) -- Offset to the right of the main window
+
+ESPControls:AddToggle("Health ESP", false, function(val)
+    HEALTH_ESP_ENABLED = val
 end)
