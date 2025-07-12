@@ -1,1 +1,218 @@
-loadstring(game:HttpGet("https://raw.githubusercontent.com/pavelsaccounts/sigma-script/main/main", true))()
+-- Load Rayfield UI safely
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+end)
+if not success or not Rayfield then
+    warn("Rayfield failed to load.")
+    return
+end
+
+-- UI Window
+local Window = Rayfield:CreateWindow({
+    Name = "Open Source Universal",
+    LoadingTitle = "Open Source Universal",
+    LoadingSubtitle = "Made by Messor",
+    ShowText = "Open Source Universal",
+    Theme = "Default",
+    ToggleUIKeybind = Enum.KeyCode.RightShift,
+})
+
+-- Show notification on load
+if Rayfield.Notify then
+    Rayfield:Notify({
+        Title = "Open Source Universal",
+        Content = "Made by Messor",
+        Duration = 5
+    })
+end
+
+-- Tabs
+local MainTab = Window:CreateTab("Main", "target")
+local ESPTab  = Window:CreateTab("ESP", "eye")
+
+-- State
+local AIMBOT_ENABLED = false
+local AIMBOT_KEY = Enum.KeyCode.Q
+local AIMBOT_HOLDING = false
+local AIMBOT_FOV = 90
+local AIMBOT_SMOOTH = 1
+
+local ESP_ENABLED = false
+local NAME_ESP = false
+
+local AIM_PART_OPTIONS = {
+    ["Head"] = "Head",
+    ["Left Foot"] = "LeftFoot",
+    ["Right Foot"] = "RightFoot",
+    ["Lower Leg"] = "LeftLowerLeg" -- will fallback to RightLowerLeg if needed
+}
+local AIM_PART = AIM_PART_OPTIONS["Head"]
+
+-- Fix mouse behavior (restores zoom, etc.)
+pcall(function()
+    game:GetService("UserInputService").ModalEnabled = false
+end)
+
+-- Aimbot key detection
+game:GetService("UserInputService").InputBegan:Connect(function(input, gpe)
+    if input.KeyCode == AIMBOT_KEY then AIMBOT_HOLDING = true end
+end)
+game:GetService("UserInputService").InputEnded:Connect(function(input, gpe)
+    if input.KeyCode == AIMBOT_KEY then AIMBOT_HOLDING = false end
+end)
+
+-- ESP functions
+local function createESP(player)
+    local char = player.Character
+    if not char or char:FindFirstChild("RayfieldESP") then return end
+
+    local hl = Instance.new("Highlight")
+    hl.Name = "RayfieldESP"
+    hl.FillColor = Color3.new(1, 0, 0)
+    hl.FillTransparency = 0.5
+    hl.OutlineColor = Color3.new(1, 1, 1)
+    hl.Adornee = char
+    hl.Parent = char
+
+    if NAME_ESP then
+        local head = char:FindFirstChild("Head")
+        if head then
+            local tag = Instance.new("BillboardGui")
+            tag.Name = "ESPNameTag"
+            tag.Size = UDim2.new(0, 100, 0, 40)
+            tag.Adornee = head
+            tag.StudsOffset = Vector3.new(0, 2.5, 0)
+            tag.AlwaysOnTop = true
+
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.new(1, 0, 1, 0)
+            label.BackgroundTransparency = 1
+            label.Text = player.Name
+            label.TextColor3 = Color3.new(1, 1, 1)
+            label.TextStrokeTransparency = 0
+            label.Font = Enum.Font.SourceSansBold
+            label.TextSize = 18
+            label.Parent = tag
+            tag.Parent = char
+        end
+    end
+end
+
+local function clearESP(player)
+    local char = player.Character
+    if not char then return end
+    local esp = char:FindFirstChild("RayfieldESP")
+    if esp then esp:Destroy() end
+    local tag = char:FindFirstChild("ESPNameTag")
+    if tag then tag:Destroy() end
+end
+
+local function updateAllESP()
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player ~= game.Players.LocalPlayer then
+            clearESP(player)
+            if ESP_ENABLED then createESP(player) end
+        end
+    end
+end
+
+game.Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        if ESP_ENABLED then createESP(player) end
+    end)
+end)
+
+-- MAIN TAB
+MainTab:CreateSection("Aimbot")
+MainTab:CreateToggle({
+    Name = "Enable Aimbot",
+    CurrentValue = false,
+    Callback = function(val) AIMBOT_ENABLED = val end,
+})
+MainTab:CreateKeybind({
+    Name = "Aimbot Hold Key",
+    CurrentKeybind = "Q",
+    HoldToInteract = true,
+    Callback = function(key)
+        AIMBOT_KEY = Enum.KeyCode[key] or Enum.KeyCode.Q
+    end,
+})
+MainTab:CreateSlider({
+    Name = "Aimbot FOV",
+    Range = {10, 180},
+    Increment = 1,
+    CurrentValue = AIMBOT_FOV,
+    Callback = function(v) AIMBOT_FOV = v end,
+})
+MainTab:CreateSlider({
+    Name = "Aimbot Smoothness",
+    Range = {0.1, 10},
+    Increment = 0.1,
+    CurrentValue = AIMBOT_SMOOTH,
+    Callback = function(v) AIMBOT_SMOOTH = v end,
+})
+-- Aim Part Selector
+MainTab:CreateDropdown({
+    Name = "Aim Part",
+    Options = {"Head", "Left Foot", "Right Foot", "Lower Leg"},
+    CurrentOption = "Head",
+    Callback = function(option)
+        AIM_PART = AIM_PART_OPTIONS[option] or "Head"
+    end,
+})
+
+-- ESP TAB
+ESPTab:CreateSection("ESP")
+ESPTab:CreateToggle({
+    Name = "Enable ESP",
+    CurrentValue = false,
+    Callback = function(val)
+        ESP_ENABLED = val
+        updateAllESP()
+    end,
+})
+ESPTab:CreateToggle({
+    Name = "Name ESP",
+    CurrentValue = false,
+    Callback = function(val)
+        NAME_ESP = val
+        updateAllESP()
+    end,
+})
+
+-- Aimbot logic
+game:GetService("RunService").RenderStepped:Connect(function()
+    if not (AIMBOT_ENABLED and AIMBOT_HOLDING) then return end
+
+    local cam = workspace.CurrentCamera
+    local closest = nil
+    local minDist = AIMBOT_FOV
+
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player ~= game.Players.LocalPlayer and player.Character then
+            local part = player.Character:FindFirstChild(AIM_PART)
+            -- Fallback for lower leg if not found
+            if not part and AIM_PART == "LeftLowerLeg" then
+                part = player.Character:FindFirstChild("RightLowerLeg")
+            end
+            if part then
+                local screenPos, visible = cam:WorldToViewportPoint(part.Position)
+                if visible then
+                    local mouse = game:GetService("UserInputService"):GetMouseLocation()
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(mouse.X, mouse.Y)).Magnitude
+                    if dist < minDist then
+                        minDist = dist
+                        closest = part
+                    end
+                end
+            end
+        end
+    end
+
+    if closest then
+        local dir = (closest.Position - cam.CFrame.Position).Unit
+        cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, cam.CFrame.Position + dir), AIMBOT_SMOOTH / 10)
+    end
+end)
+
+print("Open Source Universal loaded successfully! Made by Messor")
